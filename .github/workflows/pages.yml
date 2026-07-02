@@ -1,0 +1,48 @@
+name: Deploy Pages
+
+# GitHub'ın legacy (Jekyll) Pages hattı "Deployment failed, try again later" ile
+# aralıklı düşüyordu; Android+iOS sürüm commit'leri art arda gelince sayfa bayat
+# kalabiliyordu. Bu workflow:
+#   - concurrency + cancel-in-progress: art arda commit'lerde eski dağıtım İPTAL
+#     edilir (failure e-postası üretmez), hep en yenisi dağıtılır.
+#   - geçici hatada 30 sn bekleyip OTOMATİK yeniden dener.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy1.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - name: Deploy (1. deneme)
+        id: deploy1
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - name: Gecici hata — 30 sn bekle
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 30
+      - name: Deploy (2. deneme)
+        if: steps.deploy1.outcome == 'failure'
+        uses: actions/deploy-pages@v4
